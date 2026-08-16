@@ -89,6 +89,7 @@ import {
 } from './lib/capabilities.mjs';
 import { normalizeBrowserRuntimeEvent } from './lib/runtime-events.mjs';
 import { buildSupportDiagnostics } from './lib/support-diagnostics.mjs';
+import { buildOutboundContent } from './lib/context-publication-envelope.mjs';
 import {
   DEFAULT_AGENT_PORTS,
   activeAgents,
@@ -2485,15 +2486,6 @@ function estimateAttachmentTokens(items = attachments) {
 function userTextWithAttachments(userText = '', items = attachments) {
   const text = String(userText || '').trim();
   return `${text || 'Attachment-only turn.'}${attachmentContextText(items)}`;
-}
-
-function outboundContent(prompt = '', items = attachments) {
-  const images = items.filter((attachment) => attachment.kind === 'image' && attachment.dataUrl);
-  if (!images.length) return prompt;
-  return [
-    { type: 'text', text: prompt },
-    ...images.slice(0, 6).map((image) => ({ type: 'image_url', image_url: { url: image.dataUrl, detail: 'auto' } })),
-  ];
 }
 
 function modelProviderLabel(model = {}) {
@@ -5317,7 +5309,7 @@ async function streamSessionChat(prompt, onDelta, onTool, { signal, attachments:
             model: currentModelRequestId(),
             defaultModel: DEFAULT_SETTINGS.model,
           }),
-          message: outboundContent(prompt, turnAttachments),
+          message: buildOutboundContent(prompt, turnAttachments),
           system_message: HERMES_BROWSER_SYSTEM_PROMPT,
         }),
   });
@@ -5345,7 +5337,7 @@ async function streamChatCompletions(prompt, onDelta, onTool, { signal, attachme
       stream: true,
       messages: [
         { role: 'system', content: HERMES_BROWSER_SYSTEM_PROMPT },
-        { role: 'user', content: outboundContent(prompt, turnAttachments) },
+        { role: 'user', content: buildOutboundContent(prompt, turnAttachments) },
       ],
     }),
   });
@@ -5481,7 +5473,7 @@ async function fallbackSessionChat(prompt, turnAttachments = attachments, { onRu
             model: currentModelRequestId(),
             defaultModel: DEFAULT_SETTINGS.model,
           }),
-          message: outboundContent(prompt, turnAttachments),
+          message: buildOutboundContent(prompt, turnAttachments),
           system_message: HERMES_BROWSER_SYSTEM_PROMPT,
         }),
   });
@@ -5505,7 +5497,7 @@ async function fallbackChatCompletions(prompt, turnAttachments = attachments) {
       stream: false,
       messages: [
         { role: 'system', content: HERMES_BROWSER_SYSTEM_PROMPT },
-        { role: 'user', content: outboundContent(prompt, turnAttachments) },
+        { role: 'user', content: buildOutboundContent(prompt, turnAttachments) },
       ],
     }),
   });

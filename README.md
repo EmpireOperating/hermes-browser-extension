@@ -218,7 +218,7 @@ Hermes Browser Extension is intentionally conservative in v0.1:
 - No `debugger`, `nativeMessaging`, `cookies`, `history`, `downloads`, or `bookmarks` permissions.
 - Restricted pages include browser internals, extension pages, and obvious banking/crypto/password/payment/health/government-tax categories.
 
-See [`SECURITY.md`](SECURITY.md), [`PERMISSIONS.md`](PERMISSIONS.md), [`DATA-FLOW.md`](DATA-FLOW.md), and [`PRIVACY.md`](PRIVACY.md) for details.
+See [`SECURITY.md`](SECURITY.md), [`PERMISSIONS.md`](PERMISSIONS.md), [`DATA-FLOW.md`](DATA-FLOW.md), [`PRIVACY.md`](PRIVACY.md), and the inert [`context publication preparation`](CONTEXT-PUBLICATION-PREPARATION.md) contract for details.
 
 ## Troubleshooting
 
