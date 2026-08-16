@@ -4,6 +4,12 @@ import {
 } from './lib/meshcentral-node-provenance.mjs';
 import { createContextPublicationPreparationBridge } from './lib/context-publication-preparation.mjs';
 import {
+  CONTEXT_PUBLICATION_CAPTURE_MESSAGE,
+  CONTEXT_PUBLICATION_TRANSACTION_MESSAGE,
+  createContextPublicationCaptureRegistry,
+  createContextPublicationTransaction,
+} from './lib/context-publication-transaction.mjs';
+import {
   buildSidePanelPath,
   DEFAULT_PANEL_RESIDENCY_MODE,
   normalizePanelResidencyMode,
@@ -22,6 +28,7 @@ import {
 } from './lib/transcript.mjs';
 
 let cachedPanelResidencyMode = DEFAULT_PANEL_RESIDENCY_MODE;
+const CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY = 'hermesContextPublicationAmbiguity';
 const profileEpochId = crypto.randomUUID();
 const meshCentralNavigationEpochs = createMeshCentralNavigationEpochRegistry({
   randomUUID: () => crypto.randomUUID(),
@@ -52,6 +59,93 @@ const contextPublicationPreparationBridge = createContextPublicationPreparationB
       || 'sidepanel.html',
   ),
   profileEpochId,
+});
+
+function prepareContextPublicationForTransaction({ tabId, content }, sender) {
+  return contextPublicationPreparationBridge.prepare({
+    type: 'HERMES_PREPARE_CONTEXT_PUBLICATION_V1',
+    tabId,
+    content,
+  }, sender);
+}
+
+async function loadContextPublicationConnection() {
+  const stored = await chrome.storage.local.get('hermesBrowserSettings');
+  const settings = stored?.hermesBrowserSettings || {};
+  return {
+    gatewayMode: settings.gatewayMode,
+    gatewayUrl: settings.gatewayUrl,
+    apiKey: settings.apiKey,
+    activeProfile: settings.activeProfile,
+    sessionId: settings.sessionId,
+  };
+}
+
+let contextPublicationMarkerMutation = Promise.resolve();
+
+function mutateContextPublicationMarkers(operation) {
+  const next = contextPublicationMarkerMutation.then(operation, operation);
+  contextPublicationMarkerMutation = next.catch(() => {});
+  return next;
+}
+
+async function markContextPublicationPending() {
+  const markerId = crypto.randomUUID();
+  await mutateContextPublicationMarkers(async () => {
+    const stored = await chrome.storage.local.get(CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY);
+    const current = stored?.[CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY];
+    const entries = current?.version === 2 && Array.isArray(current.entries)
+      ? current.entries.filter((entry) => entry && typeof entry.id === 'string')
+      : [];
+    if (entries.length >= 32) {
+      throw new Error('Context publication ambiguity marker capacity reached');
+    }
+    entries.push({
+      id: markerId,
+      occurredAt: Date.now(),
+      stage: 'context_publication_publish',
+      reason: 'outcome_ambiguous',
+    });
+    await chrome.storage.local.set({
+      [CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY]: {
+        version: 2,
+        entries,
+      },
+    });
+  });
+  return markerId;
+}
+
+async function clearContextPublicationPending(markerId) {
+  if (typeof markerId !== 'string' || !markerId) return;
+  await mutateContextPublicationMarkers(async () => {
+    const stored = await chrome.storage.local.get(CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY);
+    const current = stored?.[CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY];
+    const entries = current?.version === 2 && Array.isArray(current.entries)
+      ? current.entries.filter((entry) => entry?.id !== markerId)
+      : [];
+    if (entries.length) {
+      await chrome.storage.local.set({
+        [CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY]: { version: 2, entries },
+      });
+    } else {
+      await chrome.storage.local.remove(CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY);
+    }
+  });
+}
+
+const contextPublicationCaptures = createContextPublicationCaptureRegistry({
+  prepare: prepareContextPublicationForTransaction,
+  loadConnection: loadContextPublicationConnection,
+});
+const contextPublicationTransaction = createContextPublicationTransaction({
+  prepare: prepareContextPublicationForTransaction,
+  consumeCaptureBinding: (ticket, tabId, sender) => (
+    contextPublicationCaptures.consume(ticket, tabId, sender)
+  ),
+  loadConnection: loadContextPublicationConnection,
+  markPublishPending: markContextPublicationPending,
+  clearPublishPending: clearContextPublicationPending,
 });
 
 function defaultSidePanelPath() {
@@ -322,6 +416,26 @@ chrome.storage?.onChanged?.addListener?.((changes, areaName) => {
   }
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === CONTEXT_PUBLICATION_CAPTURE_MESSAGE) {
+    contextPublicationCaptures.begin(message, sender)
+      .then(sendResponse)
+      .catch(() => sendResponse({
+        ok: false,
+        stage: 'context_publication_capture',
+        reason: 'binding_unavailable',
+      }));
+    return true;
+  }
+  if (message?.type === CONTEXT_PUBLICATION_TRANSACTION_MESSAGE) {
+    contextPublicationTransaction.publish(message, sender)
+      .then(sendResponse)
+      .catch(() => sendResponse({
+        ok: false,
+        stage: 'context_publication_publish',
+        reason: 'request_failed',
+      }));
+    return true;
+  }
   if (message?.type === 'HERMES_PREPARE_CONTEXT_PUBLICATION_V1') {
     contextPublicationPreparationBridge.prepare(message, sender)
       .then(sendResponse)

@@ -8,6 +8,7 @@ import {
   capabilityStatusRows,
   connectionSecuritySummary,
   normalizeGatewayCapabilities,
+  shouldUseProtectedContextPublication,
 } from '../extension/lib/capabilities.mjs';
 
 test('normalizeGatewayCapabilities maps the Hermes /v1/capabilities API contract', () => {
@@ -26,6 +27,7 @@ test('normalizeGatewayCapabilities maps the Hermes /v1/capabilities API contract
       session_compress: true,
       session_resources: true,
       session_chat: true,
+      context_publication_authorization: true,
             session_chat_streaming: true,
             session_model_lock: true,
             skills_api: true,
@@ -46,6 +48,8 @@ test('normalizeGatewayCapabilities maps the Hermes /v1/capabilities API contract
       session_context: { method: 'GET', path: '/api/sessions/{session_id}/context' },
       session_compress: { method: 'POST', path: '/api/sessions/{session_id}/compress' },
       session_chat: { method: 'POST', path: '/api/sessions/{session_id}/chat' },
+      context_publication_authorize: { method: 'POST', path: '/api/sessions/{session_id}/context-publications/authorize' },
+      context_publication: { method: 'POST', path: '/api/sessions/{session_id}/context-publications' },
             session_chat_stream: { method: 'POST', path: '/api/sessions/{session_id}/chat/stream' },
             session_model_lock: { method: 'POST', path: '/api/sessions/{session_id}/model' },
           },
@@ -57,6 +61,7 @@ test('normalizeGatewayCapabilities maps the Hermes /v1/capabilities API contract
         assert.equal(caps.models, true);
         assert.equal(caps.sessions, true);
         assert.equal(caps.sessionChat, true);
+        assert.equal(caps.contextPublicationAuthorization, true);
         assert.equal(caps.sessionChatStreaming, true);
         assert.equal(caps.sessionModelLock, true);
         assert.equal(caps.skills, true);
@@ -113,6 +118,68 @@ test('normalizeGatewayCapabilities detects browser protocol and companion plugin
   assert.equal(caps.pluginActions, false);
   assert.equal(caps.approvalEvents, false);
   assert.equal(caps.browserControl, false, 'v0.1.9 must not enable browser control even if an upstream runtime advertises it');
+});
+
+test('protected publication selection requires both generic seam and trusted companion policy', () => {
+  assert.equal(shouldUseProtectedContextPublication({
+    source: 'api-server',
+    contextPublicationAuthorization: Boolean(1),
+    browserCompanionPlugin: Boolean(1),
+  }), Boolean(1));
+  assert.equal(shouldUseProtectedContextPublication({
+    source: 'api-server',
+    contextPublicationAuthorization: Boolean(1),
+    browserCompanionPlugin: Boolean(0),
+  }), Boolean(0));
+  assert.equal(shouldUseProtectedContextPublication({
+    source: 'api-server',
+    contextPublicationAuthorization: Boolean(0),
+    browserCompanionPlugin: Boolean(1),
+  }), Boolean(0));
+  assert.equal(shouldUseProtectedContextPublication({
+    source: 'unverified',
+    contextPublicationAuthorization: Boolean(1),
+    browserCompanionPlugin: Boolean(1),
+  }), Boolean(0));
+});
+
+test('protected capability requires explicit feature and both exact dedicated routes', () => {
+  const base = {
+    object: 'hermes.api_server.capabilities',
+    platform: 'hermes-agent',
+    features: {
+      context_publication_authorization: Boolean(1),
+      browser_companion_plugin: true,
+      browser_context_status: true,
+    },
+  };
+  const exact = {
+    context_publication_authorize: {
+      method: 'POST',
+      path: '/api/sessions/{session_id}/context-publications/authorize',
+    },
+    context_publication: {
+      method: 'POST',
+      path: '/api/sessions/{session_id}/context-publications',
+    },
+  };
+  assert.equal(normalizeGatewayCapabilities({ ...base, endpoints: exact }).contextPublicationAuthorization, true);
+  assert.equal(normalizeGatewayCapabilities({
+    ...base,
+    endpoints: { context_publication_authorize: exact.context_publication_authorize },
+  }).contextPublicationAuthorization, false);
+  assert.equal(normalizeGatewayCapabilities({
+    ...base,
+    endpoints: {
+      ...exact,
+      context_publication: { ...exact.context_publication, method: 'GET' },
+    },
+  }).contextPublicationAuthorization, false);
+  assert.equal(normalizeGatewayCapabilities({
+    ...base,
+    features: { browser_context_status: true },
+    endpoints: exact,
+  }).contextPublicationAuthorization, false);
 });
 
 test('normalizeGatewayCapabilities degrades missing capability routes into a legacy object', () => {

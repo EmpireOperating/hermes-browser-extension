@@ -86,6 +86,7 @@ import {
   capabilityStatusRows,
   connectionSecuritySummary,
   normalizeGatewayCapabilities,
+  shouldUseProtectedContextPublication,
 } from './lib/capabilities.mjs';
 import { normalizeBrowserRuntimeEvent } from './lib/runtime-events.mjs';
 import { buildSupportDiagnostics } from './lib/support-diagnostics.mjs';
@@ -327,6 +328,8 @@ let connectionProbeDetail = '';
 let connectionProbeTimer = null;
 let connectionProbeInFlight = false;
 let gatewayCapabilities = { ...DEFAULT_GATEWAY_CAPABILITIES };
+let gatewayCapabilitiesBinding = '';
+let protectedPublicationExpected = false;
 let modelsRefreshing = false;
 let contextRefreshingFromButton = false;
 const REFRESH_BUTTON_MIN_BUSY_MS = 520;
@@ -1116,13 +1119,27 @@ async function unlockContextScope() {
   });
 }
 
-function setGatewayCapabilities(caps) {
+function currentGatewayCapabilityBinding() {
+  return JSON.stringify([
+    settings.gatewayMode || '',
+    normalizeGatewayUrl(settings.gatewayUrl || ''),
+    settings.activeProfile || '',
+    settings.apiKey || '',
+  ]);
+}
+
+function setGatewayCapabilities(caps, { binding = '' } = {}) {
   gatewayCapabilities = caps || { ...DEFAULT_GATEWAY_CAPABILITIES };
+  gatewayCapabilitiesBinding = binding;
+  if (gatewayCapabilities.source === 'api-server') {
+    protectedPublicationExpected = shouldUseProtectedContextPublication(gatewayCapabilities);
+  }
   renderCompatibilityPanel();
   updateVoiceButtonState();
 }
 
 async function loadGatewayCapabilities({ quiet = false, publicOnly = false, healthOk = false } = {}) {
+  const binding = currentGatewayCapabilityBinding();
   if (isRemoteWsMode()) {
     setGatewayCapabilities({
       ...DEFAULT_GATEWAY_CAPABILITIES,
@@ -1141,7 +1158,7 @@ async function loadGatewayCapabilities({ quiet = false, publicOnly = false, heal
         'Image upload unavailable — pasted images stay inline only.',
         'Automatic browser pairing unavailable — manual dashboard sign-in is required.',
       ],
-    });
+    }, { binding });
     return gatewayCapabilities;
   }
   try {
@@ -1149,13 +1166,16 @@ async function loadGatewayCapabilities({ quiet = false, publicOnly = false, heal
     const response = await fetcher('/v1/capabilities', { method: 'GET', cache: 'no-store' });
     const payload = await readJsonResponse(response);
     if (!response.ok) throw new Error(`GET /v1/capabilities failed (${response.status})`);
-    setGatewayCapabilities(normalizeGatewayCapabilities(payload, { healthOk: true, hasApiKey: Boolean(settings.apiKey) }));
+    setGatewayCapabilities(
+      normalizeGatewayCapabilities(payload, { healthOk: true, hasApiKey: Boolean(settings.apiKey) }),
+      { binding },
+    );
   } catch (error) {
     setGatewayCapabilities(normalizeGatewayCapabilities(null, {
       healthOk,
       hasApiKey: Boolean(settings.apiKey),
       warning: error?.message || String(error),
-    }));
+    }), { binding });
     if (!quiet) setStatus('warn', 'Hermes compatibility fallback', 'This gateway does not expose /v1/capabilities yet. Browser-specific routes will stay in fallback mode.');
   }
   return gatewayCapabilities;
@@ -1338,6 +1358,8 @@ function updateComposerBusyState() {
   if (startupBlocking) {
     [els.inlineSendButton, els.stopButton, els.queueButton, els.steerButton, els.voiceButton].filter(Boolean).forEach((button) => { button.disabled = true; });
   }
+  if (els.contextScopeButton) els.contextScopeButton.disabled = startupBlocking || sending;
+  if (sending && els.contextScopeMenu) els.contextScopeMenu.hidden = true;
   els.composerDropZone?.classList.toggle('busy-draft', state.busyDraft);
   els.composerDropZone?.classList.toggle('can-steer', state.busyDraft && !state.controls.steer.hidden);
   if (els.sendButton) {
@@ -1526,6 +1548,7 @@ const VOICE_AUDIO_MIME_TYPES = Object.freeze([
 const MICROPHONE_PERMISSION_PAGE = 'request-permissions.html';
 const VOICE_DICTATION_PAGE = 'voice-dictation.html';
 const VOICE_DRAFT_STORAGE_KEY = 'hermesVoiceDraft';
+const CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY = 'hermesContextPublicationAmbiguity';
 const VOICE_DRAFT_MAX_AGE_MS = 10 * 60 * 1000;
 
 function speechRecognitionConstructor() {
@@ -3345,7 +3368,6 @@ function renderProfiles() {
     els.profileSelect.appendChild(option);
   }
   els.profileSelect.value = selected;
-  if (!settings.activeProfile && selected) settings = { ...settings, activeProfile: selected };
   if (availableProfiles.length) {
     const active = availableProfiles.find((profile) => profile.name === selected) || availableProfiles.find((profile) => profile.active);
     els.profileStatus.textContent = active
@@ -3370,6 +3392,19 @@ async function loadProfiles({ quiet = false } = {}) {
     const payload = await readJsonResponse(response);
     if (!response.ok) throw new Error(payload?.error?.message || payload?.error || `Profiles list failed (${response.status})`);
     availableProfiles = normalizeHermesProfiles(payload, settings.activeProfile || payload.active);
+    const inferredProfile = !settings.activeProfile
+      ? availableProfiles.find((profile) => profile.active)?.name || ''
+      : '';
+    if (inferredProfile) {
+      setGatewayCapabilities({
+        ...DEFAULT_GATEWAY_CAPABILITIES,
+        source: 'profile-discovery-pending',
+        warnings: ['Capabilities are being rebound to the detected active profile.'],
+      });
+      settings = { ...settings, activeProfile: inferredProfile };
+      await chrome.storage.local.set({ hermesBrowserSettings: settings });
+      await loadGatewayCapabilities({ quiet: true, healthOk: isConnected() });
+    }
     renderProfiles();
     if (!quiet) setStatus('ok', 'Hermes profiles synced', `${availableProfiles.length} profile${availableProfiles.length === 1 ? '' : 's'} available`);
   } catch (error) {
@@ -3380,10 +3415,18 @@ async function loadProfiles({ quiet = false } = {}) {
 }
 
 async function applySelectedProfile(profileName = '') {
+  setGatewayCapabilities({
+    ...DEFAULT_GATEWAY_CAPABILITIES,
+    source: 'profile-switch-pending',
+    warnings: ['Capabilities are being revalidated for the selected profile.'],
+  });
   settings = { ...settings, activeProfile: profileName };
   await chrome.storage.local.set({ hermesBrowserSettings: settings });
   renderProfiles();
-  if (!profileName || !settings.apiKey) return;
+  if (!profileName || !settings.apiKey) {
+    await loadGatewayCapabilities({ quiet: true, healthOk: isConnected() }).catch(() => {});
+    return;
+  }
   try {
     const response = await apiFetch('/v1/profiles/active', {
       method: 'POST',
@@ -3398,6 +3441,7 @@ async function applySelectedProfile(profileName = '') {
   } catch (error) {
     setStatus('warn', 'Profile switch unavailable', `${error?.message || String(error)}. Browser will use the currently running Hermes profile.`);
   }
+  await loadGatewayCapabilities({ quiet: true, healthOk: isConnected() }).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -4324,13 +4368,13 @@ async function currentWindowTabs() {
   return tabs.map(safeTab);
 }
 
-async function tabsForCurrentScope() {
+async function tabsForCurrentScope(scope = contextScope) {
   const tabs = await currentWindowTabs();
-  if (contextScope.mode !== CONTEXT_SCOPE_MODES.PINNED_TAB || contextScope.pinnedTabId === null) return tabs;
-  if (tabs.some((tab) => Number(tab.id) === Number(contextScope.pinnedTabId))) return tabs;
+  if (scope.mode !== CONTEXT_SCOPE_MODES.PINNED_TAB || scope.pinnedTabId === null) return tabs;
+  if (tabs.some((tab) => Number(tab.id) === Number(scope.pinnedTabId))) return tabs;
   try {
-    const pinned = await chrome.tabs.get(Number(contextScope.pinnedTabId));
-    return [safeTab(pinned), ...tabs.filter((tab) => Number(tab.id) !== Number(contextScope.pinnedTabId))];
+    const pinned = await chrome.tabs.get(Number(scope.pinnedTabId));
+    return [safeTab(pinned), ...tabs.filter((tab) => Number(tab.id) !== Number(scope.pinnedTabId))];
   } catch {
     return tabs;
   }
@@ -4696,9 +4740,9 @@ function clearPickedElementForActiveTab() {
   clearPickedElementForTab(currentContext?.activeTab?.id);
 }
 
-async function refreshContext() {
-  if (contextScope.mode === CONTEXT_SCOPE_MODES.CHAT_ONLY) {
-    currentContext = { activeTab: null, tabs: [], selectedTabs: [], pageContext: null, contextScope };
+async function refreshContext(scope = contextScope, { expectedTabId = null } = {}) {
+  if (scope.mode === CONTEXT_SCOPE_MODES.CHAT_ONLY) {
+    currentContext = { activeTab: null, tabs: [], selectedTabs: [], pageContext: null, contextScope: scope };
     selectedTabs = [];
     setStatus('ok', 'Chat only', 'No browser context will be read or attached.');
     renderContextScopeControls();
@@ -4706,16 +4750,23 @@ async function refreshContext() {
     return currentContext;
   }
 
-  const [active, tabs] = await Promise.all([activeTab(), tabsForCurrentScope()]);
-  const tab = resolveContextTargetTab({ activeTab: active, tabs, scope: contextScope });
-  if (contextScope.mode === CONTEXT_SCOPE_MODES.PINNED_TAB && tab) {
-    const nextScope = contextScopeFromTab(tab, contextScope);
-    if (JSON.stringify(nextScope) !== JSON.stringify(contextScope)) {
+  const [active, tabs] = await Promise.all([activeTab(), tabsForCurrentScope(scope)]);
+  const tab = resolveContextTargetTab({ activeTab: active, tabs, scope });
+  if (Number.isSafeInteger(expectedTabId) && tab?.id !== expectedTabId) {
+    throw protectedPublicationError({
+      stage: 'context_publication_capture_binding',
+      reason: 'target_tab_drift',
+    }, 'The Browser target changed before context capture.');
+  }
+  if (!Number.isSafeInteger(expectedTabId) && scope.mode === CONTEXT_SCOPE_MODES.PINNED_TAB && tab) {
+    const nextScope = contextScopeFromTab(tab, scope);
+    if (JSON.stringify(nextScope) !== JSON.stringify(scope)) {
       contextScope = nextScope;
+      scope = nextScope;
       saveContextScopeForInstance();
     }
   }
-  const pinnedMissing = contextScope.mode === CONTEXT_SCOPE_MODES.PINNED_TAB && !tab;
+  const pinnedMissing = scope.mode === CONTEXT_SCOPE_MODES.PINNED_TAB && !tab;
   const pageContext = tab
     ? await getPageContext(tab)
     : pinnedMissing
@@ -4724,14 +4775,14 @@ async function refreshContext() {
   const youtubeTranscript = tab ? await getYoutubeTranscriptForTab(tab) : null;
   if (pageContext && youtubeTranscript) pageContext.youtubeTranscript = youtubeTranscript;
   if (pageContext && tab) mergeStoredPickIntoPageContext(tab, pageContext);
-  syncSelectedTabsFromContextScope(tabs);
-  const promptTabs = filterPromptTabs(tabs, contextScope);
+  if (!Number.isSafeInteger(expectedTabId)) syncSelectedTabsFromContextScope(tabs);
+  const promptTabs = filterPromptTabs(tabs, scope);
   currentContext = {
     activeTab: tab,
     tabs,
-    selectedTabs: Array.isArray(contextScope.selectedTabIds) ? promptTabs : tabs,
+    selectedTabs: Array.isArray(scope.selectedTabIds) ? promptTabs : tabs,
     pageContext,
-    contextScope,
+    contextScope: scope,
   };
 
   if (pinnedMissing) {
@@ -5458,6 +5509,93 @@ async function connectToHermes() {
   }
 }
 
+function protectedPublicationError(result, fallback = 'Protected context publication failed.') {
+  const reason = typeof result?.reason === 'string' ? result.reason : 'request_failed';
+  const error = new Error(`${fallback} (${reason})`);
+  error.protectedPublicationFailure = true;
+  error.contextPublicationStage = result?.stage || '';
+  error.contextPublicationReason = reason;
+  error.contextPublicationAmbiguous = result?.ambiguous === true;
+  return error;
+}
+
+async function beginProtectedContextCapture(turnScope = contextScope) {
+  if (turnScope.mode === CONTEXT_SCOPE_MODES.CHAT_ONLY) return null;
+  if (!gatewayCapabilitiesBinding
+    || gatewayCapabilitiesBinding !== currentGatewayCapabilityBinding()) {
+    throw protectedPublicationError({
+      stage: 'context_publication_capability',
+      reason: 'capability_binding_stale',
+    }, 'Protected publication capability is stale for the current gateway, credential, or profile.');
+  }
+  const protectedSelected = shouldUseProtectedContextPublication(gatewayCapabilities);
+  if (protectedPublicationExpected && !protectedSelected) {
+    throw protectedPublicationError({
+      stage: 'context_publication_capability',
+      reason: 'capability_revalidation_required',
+    }, 'Protected publication capability must be revalidated for this profile.');
+  }
+  if (!protectedSelected) {
+    throw protectedPublicationError({
+      stage: 'context_publication_capability',
+      reason: 'protected_publication_unavailable',
+    }, 'Protected publication is required for Browser page context but is unavailable.');
+  }
+  if (isRemoteWsMode()) {
+    throw protectedPublicationError({
+      stage: 'context_publication_connection',
+      reason: 'protected_transport_unavailable',
+    }, 'Protected publication is not available over the dashboard WebSocket transport.');
+  }
+  if (!await ensureHermesSession()) {
+    throw protectedPublicationError({
+      stage: 'context_publication_connection',
+      reason: 'session_unavailable',
+    }, 'Protected publication requires a durable Hermes session.');
+  }
+  const [active, tabs] = await Promise.all([activeTab(), tabsForCurrentScope(turnScope)]);
+  const target = resolveContextTargetTab({ activeTab: active, tabs, scope: turnScope });
+  if (!Number.isSafeInteger(target?.id) || target.id < 0) {
+    throw protectedPublicationError({
+      stage: 'context_publication_capture',
+      reason: 'target_tab_unavailable',
+    }, 'Protected publication requires a bound Browser tab.');
+  }
+  const result = await chrome.runtime.sendMessage({
+    type: 'HERMES_BEGIN_CONTEXT_CAPTURE_V1',
+    tabId: target.id,
+  });
+  if (result?.ok !== true || typeof result.captureTicket !== 'string') {
+    throw protectedPublicationError(result, 'Could not bind Browser context before capture.');
+  }
+  return Object.freeze({
+    captureTicket: result.captureTicket,
+    tabId: target.id,
+  });
+}
+
+async function protectedSessionChat(content, capture) {
+  const result = await chrome.runtime.sendMessage({
+    type: 'HERMES_PUBLISH_CONTEXT_V1',
+    captureTicket: capture.captureTicket,
+    tabId: capture.tabId,
+    content,
+    model: currentModelRequestId(),
+    provider: currentModelProviderSlug() || undefined,
+    modelOptions: currentModelOptionsPayload(),
+    requireModelLock: shouldRequireModelLock({
+      provider: currentModelProviderSlug(),
+      model: currentModelRequestId(),
+      defaultModel: DEFAULT_SETTINGS.model,
+    }),
+  });
+  if (result?.ok !== true || !result.response) {
+    throw protectedPublicationError(result);
+  }
+  applyTurnRuntimePayload(result.response);
+  return extractAssistantText(result.response);
+}
+
 async function fallbackSessionChat(prompt, turnAttachments = attachments, { onRuntime } = {}) {
   const hasSessionRoutes = await ensureHermesSession();
   if (!hasSessionRoutes) return fallbackChatCompletions(prompt, turnAttachments);
@@ -5517,6 +5655,11 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
   }
 
   const autoTitle = autoTitleForCurrentTurn(userText);
+  const normalizedTurnScope = normalizeContextScope(contextScope);
+  const turnContextScope = Object.freeze({
+    ...normalizedTurnScope,
+    selectedTabIds: Object.freeze([...(normalizedTurnScope.selectedTabIds || [])]),
+  });
   sending = true;
     const selectedModel = currentSelectedModel();
     if (selectedModel && !isModelRuntimeSelectable(selectedModel)) {
@@ -5527,6 +5670,15 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
     } catch {
       sending = false;
       updateComposerBusyState();
+      return false;
+    }
+    let protectedCapture = null;
+    try {
+      protectedCapture = await beginProtectedContextCapture(turnContextScope);
+    } catch (error) {
+      sending = false;
+      updateComposerBusyState();
+      addMessage('system', `Protected publication stopped before Browser context capture: ${error?.message || String(error)}`);
       return false;
     }
     activeAbortController = new AbortController();
@@ -5541,8 +5693,13 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
   let didSend = false;
   let shouldFlushQueue = false;
   try {
-    const preparedAttachments = await saveImageAttachmentsForTurn(turnAttachments);
-    const context = await refreshContext();
+    const preparedAttachments = protectedCapture
+      ? turnAttachments
+      : await saveImageAttachmentsForTurn(turnAttachments);
+    const context = await refreshContext(
+      turnContextScope,
+      { expectedTabId: protectedCapture?.tabId || null },
+    );
 
     // Detect /command at the start of userText and resolve to a command prompt.
     // Attachments are appended after command expansion so /summarize + file/text
@@ -5562,9 +5719,9 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
     const displayUserText = preparedAttachments.length
       ? `${userText || 'Attachment-only turn.'}\n${preparedAttachments.map((attachment) => `${attachmentIcon(attachment.kind)} ${attachment.label}`).join('\n')}`
       : userText;
-    const promptTabs = filterPromptTabs(context.tabs, contextScope);
-    const selectedPromptTabs = Array.isArray(contextScope.selectedTabIds) ? promptTabs : undefined;
-    const contextHash = contextScope.mode === CONTEXT_SCOPE_MODES.CHAT_ONLY ? '' : browserContextPayloadHash({
+    const promptTabs = filterPromptTabs(context.tabs, turnContextScope);
+    const selectedPromptTabs = Array.isArray(turnContextScope.selectedTabIds) ? promptTabs : undefined;
+    const contextHash = turnContextScope.mode === CONTEXT_SCOPE_MODES.CHAT_ONLY ? '' : browserContextPayloadHash({
       activeTab: context.activeTab,
       selectedTabs: selectedPromptTabs || promptTabs,
       pageContext: context.pageContext,
@@ -5576,7 +5733,7 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
       tabs: context.tabs,
       pageContext: context.pageContext,
       selectedTabs: selectedPromptTabs,
-      contextScope,
+      contextScope: turnContextScope,
       settings,
       contextHash,
     });
@@ -5586,40 +5743,45 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
     appendContextReceipt(userNode, receipt);
     const { node } = addMessage('assistant', THINKING_PLACEHOLDER, { persist: false });
     const streamView = createStreamingMessageUpdater(node);
+    const outboundContent = buildOutboundContent(prompt, preparedAttachments);
     let answer = '';
     let liveText = '';
-    try {
-      answer = await streamSessionChat(
-        prompt,
-        (partial) => {
-          liveText = partial || '';
-          streamView.updateText(liveText || THINKING_PLACEHOLDER);
-        },
-        (tool) => streamView.updateTool(normalizeToolActivity(tool.data || tool)),
-        {
-          signal: activeAbortController.signal,
-          attachments: preparedAttachments,
-          onRun: (runId) => {
-            activeRunId = runId;
+    if (protectedCapture) {
+      answer = await protectedSessionChat(outboundContent, protectedCapture);
+    } else {
+      try {
+        answer = await streamSessionChat(
+          prompt,
+          (partial) => {
+            liveText = partial || '';
+            streamView.updateText(liveText || THINKING_PLACEHOLDER);
           },
-          onSteerQueued: restoreBackendQueuedSteerDraft,
-          onRuntime: applyTurnRuntimePayload,
-        },
-      );
-    } catch (streamError) {
-      if (isAbortError(streamError)) {
-        answer = liveText ? `${liveText}\n\n[stopped by user]` : '[stopped by user]';
-      } else if (streamError?.hermesSetupFailure) {
-        streamView.update(`Hermes setup issue.\n${streamError.message}`);
-        throw streamError;
-      } else if (isRemoteWsMode()) {
-        // No REST fallback in remote-dashboard mode — the api_server surface is
-        // not reachable cross-origin. Surface the WS/ticket error directly.
-        streamView.update(`Could not reach the Hermes dashboard.\n${streamError.message}`);
-        throw streamError;
-      } else {
-        streamView.update(`Streaming failed, retrying non-streaming...\n${streamError.message}`);
-        answer = await fallbackSessionChat(prompt, preparedAttachments, { onRuntime: applyTurnRuntimePayload });
+          (tool) => streamView.updateTool(normalizeToolActivity(tool.data || tool)),
+          {
+            signal: activeAbortController.signal,
+            attachments: preparedAttachments,
+            onRun: (runId) => {
+              activeRunId = runId;
+            },
+            onSteerQueued: restoreBackendQueuedSteerDraft,
+            onRuntime: applyTurnRuntimePayload,
+          },
+        );
+      } catch (streamError) {
+        if (isAbortError(streamError)) {
+          answer = liveText ? `${liveText}\n\n[stopped by user]` : '[stopped by user]';
+        } else if (streamError?.hermesSetupFailure) {
+          streamView.update(`Hermes setup issue.\n${streamError.message}`);
+          throw streamError;
+        } else if (isRemoteWsMode()) {
+          // No REST fallback in remote-dashboard mode — the api_server surface is
+          // not reachable cross-origin. Surface the WS/ticket error directly.
+          streamView.update(`Could not reach the Hermes dashboard.\n${streamError.message}`);
+          throw streamError;
+        } else {
+          streamView.update(`Streaming failed, retrying non-streaming...\n${streamError.message}`);
+          answer = await fallbackSessionChat(prompt, preparedAttachments, { onRuntime: applyTurnRuntimePayload });
+        }
       }
     }
     const finalAnswer = answer || liveText || '(empty response)';
@@ -5630,7 +5792,15 @@ async function askHermes(userText, turnAttachments = [...attachments]) {
     await loadSessions({ quiet: true });
     didSend = true;
   } catch (error) {
-    if (!isAbortError(error)) {
+    if (error?.protectedPublicationFailure) {
+      if (error?.contextPublicationAmbiguous) {
+        setStatus('warn', 'Publication outcome unknown', 'Protected publication may have completed; reconcile session history before retrying.');
+        addMessage('system', 'Protected Browser publication may have completed, but its response could not be confirmed. Reconcile session history before retrying. No ordinary-chat fallback was attempted.');
+      } else {
+        setStatus('warn', 'Protected publication stopped', error.message);
+        addMessage('system', `Protected Browser context was not published: ${error.message} No ordinary-chat fallback was attempted.`);
+      }
+    } else if (!isAbortError(error)) {
       if (error?.remoteDiagnostic && applyRemoteDiagnostic(error.remoteDiagnostic, { statusKind: 'error' })) {
         addMessage('system', `Hermes Browser Extension setup issue: ${error.remoteDiagnostic.detail} Open Settings → Support diagnostics → Copy Diagnostics and paste the redacted report if you need help.`);
         return didSend;
@@ -6237,6 +6407,7 @@ function bindEvents() {
   });
 
   els.contextScopeButton?.addEventListener('click', (event) => {
+    if (sending) return;
     event.stopPropagation();
     if (!els.contextScopeMenu) return;
     if (!els.contextScopeMenu.hidden) {
@@ -6247,6 +6418,7 @@ function bindEvents() {
     renderContextScopeMenu();
   });
   els.contextScopeMenu?.addEventListener('input', (event) => {
+    if (sending) return;
     if (!event.target?.matches?.('.context-scope-search')) return;
     renderContextScopeTabList(event.target.value);
   });
@@ -6346,6 +6518,25 @@ function bindEvents() {
   });
 }
 
+async function consumeContextPublicationAmbiguity() {
+  try {
+    const stored = await chrome.storage.local.get(CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY);
+    const marker = stored?.[CONTEXT_PUBLICATION_AMBIGUITY_STORAGE_KEY];
+    const entries = marker?.version === 2 && Array.isArray(marker.entries)
+      ? marker.entries.filter((entry) => entry?.reason === 'outcome_ambiguous'
+        && Number.isSafeInteger(entry?.occurredAt))
+      : marker?.version === 1 && marker?.reason === 'outcome_ambiguous'
+        && Number.isSafeInteger(marker?.occurredAt)
+        ? [marker]
+        : [];
+    if (!entries.length) return false;
+    addMessage('system', `${entries.length} unresolved protected Browser publication ${entries.length === 1 ? 'outcome requires' : 'outcomes require'} session-history reconciliation before retrying.`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function runStartupReadiness() {
   startupReadiness = initialStartupReadiness(settings);
   renderStartupReadiness();
@@ -6424,6 +6615,7 @@ async function runStartupReadiness() {
 
 bindEvents();
 await runStartupReadiness();
+await consumeContextPublicationAmbiguity();
 try {
   await refreshContext();
 } catch (error) {
