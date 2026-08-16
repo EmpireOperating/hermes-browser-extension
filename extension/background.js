@@ -2,6 +2,7 @@ import {
   createMeshCentralNavigationEpochRegistry,
   createMeshCentralNodeProvenanceBridge,
 } from './lib/meshcentral-node-provenance.mjs';
+import { createContextPublicationPreparationBridge } from './lib/context-publication-preparation.mjs';
 import {
   buildSidePanelPath,
   DEFAULT_PANEL_RESIDENCY_MODE,
@@ -21,6 +22,7 @@ import {
 } from './lib/transcript.mjs';
 
 let cachedPanelResidencyMode = DEFAULT_PANEL_RESIDENCY_MODE;
+const profileEpochId = crypto.randomUUID();
 const meshCentralNavigationEpochs = createMeshCentralNavigationEpochRegistry({
   randomUUID: () => crypto.randomUUID(),
 });
@@ -36,7 +38,20 @@ const meshCentralProvenanceBridge = createMeshCentralNodeProvenanceBridge({
   tabs: chrome.tabs,
   scripting: chrome.scripting,
   navigationEpochs: meshCentralNavigationEpochs,
-  profileEpochId: crypto.randomUUID(),
+  profileEpochId,
+});
+const contextPublicationPreparationBridge = createContextPublicationPreparationBridge({
+  tabs: chrome.tabs,
+  webNavigation: chrome.webNavigation,
+  scripting: chrome.scripting,
+  navigationEpochs: meshCentralNavigationEpochs,
+  extensionId: chrome.runtime.id,
+  sidepanelUrl: chrome.runtime.getURL(
+    chrome.runtime.getManifest().side_panel?.default_path
+      || chrome.runtime.getManifest().sidebar_action?.default_panel
+      || 'sidepanel.html',
+  ),
+  profileEpochId,
 });
 
 function defaultSidePanelPath() {
@@ -307,6 +322,16 @@ chrome.storage?.onChanged?.addListener?.((changes, areaName) => {
   }
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'HERMES_PREPARE_CONTEXT_PUBLICATION_V1') {
+    contextPublicationPreparationBridge.prepare(message, sender)
+      .then(sendResponse)
+      .catch(() => sendResponse({
+        ok: false,
+        stage: 'context_publication_preparation',
+        reason: 'binding_unavailable',
+      }));
+    return true;
+  }
   if (message?.type === 'HERMES_CAPTURE_MESHCENTRAL_NODE_PROVENANCE_V1') {
     meshCentralProvenanceBridge.capture(message, sender)
       .then(sendResponse)

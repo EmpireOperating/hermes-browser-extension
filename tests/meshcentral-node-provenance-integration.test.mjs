@@ -22,6 +22,15 @@ test('content-to-background production path owns same-document provenance', () =
   assert.ok(manifest.permissions.includes('webNavigation'));
 });
 
+test('background exposes inert metadata-only context publication preparation', () => {
+  assert.match(background, /createContextPublicationPreparationBridge/);
+  assert.match(background, /HERMES_PREPARE_CONTEXT_PUBLICATION_V1/);
+  assert.match(background, /contextPublicationPreparationBridge\.prepare\(message, sender\)/);
+  assert.match(background, /getManifest\(\)\.side_panel\?\.default_path/);
+  assert.match(background, /scripting: chrome\.scripting/);
+  assert.doesNotMatch(background, /publishContext|authorizeContext|streamSessionChat/);
+});
+
 test('production path does not attach provenance to normal page context', () => {
   const collectContextBody = content.slice(
     content.indexOf('function collectContext'),

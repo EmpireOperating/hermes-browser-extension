@@ -104,6 +104,7 @@ test('trusted bridge executes the reviewed reader in the exact main-world docume
       url,
       documentId: 'document-1',
       navigationId: 'navigation-1',
+      navigationEpochId: 'navigation-1',
       captureId: 'capture-1',
       nodeId,
       observedAt: 2_000,

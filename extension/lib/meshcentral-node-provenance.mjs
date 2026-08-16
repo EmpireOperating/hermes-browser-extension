@@ -293,6 +293,7 @@ export function createMeshCentralNodeProvenanceBridge({
             url: sender.url,
             documentId: sender.documentId,
             navigationId: isolatedBeforeResult.navigationId,
+            navigationEpochId,
             captureId,
             nodeId: result.nodeId,
             observedAt,
