@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.11 — 2026-08-16
+
+### Trusted MeshCentral identity provenance
+- Added a fixed, private Browser Companion operation that reads the canonical live `getCurrentNode()._id` only from the exact top-level MeshCentral document.
+- Requires independently trusted HTTPS origin, exact base path, and expected canonical node before page-world execution.
+- Binds successful captures to browser-owned profile, window, tab, frame, document, isolated-navigation, service-worker-navigation, route, node, random capture, and observation identities.
+- Fails closed on navigation drift, route or node mismatch, malformed or accessor-backed page values, replay, stale state, and tab/document replacement.
+- Added the narrowly justified `webNavigation` permission for browser-owned navigation freshness.
+
+### Scope and security
+- This identity-only primitive adds no Browser publication, observation, support session, credentials, remote input, control, or unattended authority.
+- Trust in the page-defined identity source is limited to the pinned, integrity-preserved MeshCentral 1.2.5 build.
+- Versioned package, source manifests, generated build metadata, and current release documentation as v0.1.11.
+
 ## v0.1.10 — 2026-07-07
 
 ### Release theme

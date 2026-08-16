@@ -1,6 +1,6 @@
 # Data Flow
 
-Hermes Browser Extension connects browser context to the Hermes Agent runtime you configure. This document describes the shipped v0.1.10 data flow.
+Hermes Browser Extension connects browser context to the Hermes Agent runtime you configure. This document describes the shipped v0.1.11 data flow.
 
 ## Connection modes
 

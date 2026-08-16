@@ -9,7 +9,7 @@ Browser-native side panel for [Hermes Agent](https://hermes-agent.nousresearch.c
 </p>
 
 <p align="center">
-  <strong>Public alpha v0.1.10 · Load unpacked · Local/remote Hermes API · Full Hermes runtime tools</strong><br />
+  <strong>Public alpha v0.1.11 · Load unpacked · Local/remote Hermes API · Full Hermes runtime tools</strong><br />
   Not on the Chrome Web Store yet.
 </p>
 
@@ -64,9 +64,9 @@ This repo is specifically for the **Hermes Browser Extension**: the Chrome/Edge/
 - Node.js 20+.
 - Chrome, Edge, Brave, Comet, or another Chromium browser with Side Panel API support (Chrome 114+ baseline).
 
-## v0.1.10 compatibility matrix
+## v0.1.11 compatibility matrix
 
-| Surface | Supported in v0.1.10 | Fallback / note |
+| Surface | Supported in v0.1.11 | Fallback / note |
 | --- | --- | --- |
 | Chrome / Edge / Chromium 114+ side panel | Yes | Primary public support target. |
 | Brave / Comet / Chromium forks | Best-effort | Must expose the Chromium Side Panel API and extension clipboard permissions for Copy Diagnostics. |
@@ -228,14 +228,14 @@ Make sure you loaded `dist/`, not the repo root. The selected folder must contai
 
 ### Chrome still shows an older version after updating
 
-The browser is still using an old unpacked folder or an unpacked extension card that was not reloaded. For v0.1.10, the source manifest, built `dist/` manifest, and release archive should all contain `manifest.json` version `0.1.10`.
+The browser is still using an old unpacked folder or an unpacked extension card that was not reloaded. For v0.1.11, the source manifest, built `dist/` manifest, and release archive should all contain `manifest.json` version `0.1.11`.
 
 Fix:
 
-1. Extract/download the v0.1.10 release or run `npm run build` locally.
+1. Extract/download the v0.1.11 release or run `npm run build` locally.
 2. Open `chrome://extensions` or `edge://extensions`.
 3. On the Hermes Browser Extension card, click **Reload**.
-4. If it still shows an older version, click **Remove**, then **Load unpacked** again and select the fresh v0.1.10 `dist/` folder.
+4. If it still shows an older version, click **Remove**, then **Load unpacked** again and select the fresh v0.1.11 `dist/` folder.
 5. Click **service worker** / **Inspect views** only for debugging; it is not the version source.
 
 ### Filing a support issue
