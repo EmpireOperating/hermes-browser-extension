@@ -9,6 +9,34 @@ if (previousListener) {
 }
 globalThis.__HERMES_BROWSER_CONTENT_LOADED__ = CONTENT_SCRIPT_VERSION;
 
+const MESH_NAVIGATION_STATE_KEY = '__HERMES_MESHCENTRAL_NAVIGATION_STATE_V1__';
+const MESH_NAVIGATION_LISTENER_KEY = '__HERMES_MESHCENTRAL_NAVIGATION_LISTENER_V1__';
+function mintMeshNavigationId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `navigation-${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+function rotateMeshNavigationId() {
+  Object.defineProperty(globalThis, MESH_NAVIGATION_STATE_KEY, {
+    configurable: true,
+    value: Object.freeze({
+      navigationApi: typeof globalThis.navigation?.addEventListener === 'function',
+      navigationId: mintMeshNavigationId(),
+    }),
+  });
+}
+const previousNavigationListener = globalThis[MESH_NAVIGATION_LISTENER_KEY];
+if (previousNavigationListener && globalThis.navigation?.removeEventListener) {
+  globalThis.navigation.removeEventListener('navigate', previousNavigationListener);
+}
+rotateMeshNavigationId();
+const meshNavigationListener = () => rotateMeshNavigationId();
+Object.defineProperty(globalThis, MESH_NAVIGATION_LISTENER_KEY, {
+  configurable: true,
+  value: meshNavigationListener,
+});
+globalThis.navigation?.addEventListener?.('navigate', meshNavigationListener);
+
 const TEXT_LIMITS = {
   minimal: 4_000,
   normal: 12_000,
@@ -455,6 +483,21 @@ function cancelPickMode() {
 }
 
 const messageListener = (message, _sender, sendResponse) => {
+  if (message?.type === 'HERMES_GET_MESHCENTRAL_NODE_PROVENANCE_V1') {
+    chrome.runtime.sendMessage({
+      type: 'HERMES_CAPTURE_MESHCENTRAL_NODE_PROVENANCE_V1',
+      expectedOrigin: message.expectedOrigin,
+      expectedBasePath: message.expectedBasePath,
+      expectedNodeId: message.expectedNodeId,
+    })
+      .then(sendResponse)
+      .catch(() => sendResponse({
+        ok: false,
+        stage: 'meshcentral_node_provenance',
+        reason: 'main_world_unavailable',
+      }));
+    return true;
+  }
   if (message?.type === 'HERMES_GET_PAGE_CONTEXT') {
     try {
       sendResponse(collectContext(message.options || {}));
