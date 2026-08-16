@@ -81,6 +81,12 @@ The extension reads `/v1/capabilities` when available. If an older Hermes runtim
 
 v0.1.10 also separates gateway reachability from upstream Hermes runtime/tool tracebacks. If the API server is reachable but an upstream Hermes tool/runtime raises a Python traceback, the side panel can show a connected-with-warning diagnostic instead of treating the whole Browser connection as broken. Settings also include Copy Diagnostics, which creates a redacted support block without API keys, bearer tokens, cookies, page text, selected text, tab titles, or full tab URLs.
 
+## Private MeshCentral node provenance
+
+The extension includes a private, read-only provenance request for attended Empire Care integration. The request must carry the independently trusted expected HTTPS origin, MeshCentral base path, and canonical case/enrollment node; malformed or mismatched route state is rejected before page-world execution, and the result must exactly equal the expected node. Its isolated content world owns a random navigation marker rotated synchronously by the browser Navigation API, while the service worker maintains a second random, memory-only epoch sourced from browser `webNavigation` commit, history-state, and fragment events, including same-URL and A→B→A transitions. The worker derives exact tab/window/document identity from the browser-owned message sender, reads the isolated marker and worker epoch before and after execution, and uses `chrome.scripting.executeScript` in the exact top-frame `MAIN`-world `documentId` to read only the canonical `getCurrentNode()._id` own data property.
+
+The response contains only protocol, random single-use capture identifier, process-local profile epoch, window/tab, HTTPS origin/URL, document/navigation, canonical node, and observation time. The page-defined getter is relied upon only for the pinned, integrity-preserved MeshCentral build; its value remains hostile until exact equality with the independently trusted case/enrollment node. The response is not attached to normal page context, creates no support session or observation authority, grants no browser control, and is not persisted. Unsupported browsers or any binding/document/navigation drift fail closed.
+
 ## Related docs
 
 - [PERMISSIONS.md](PERMISSIONS.md)

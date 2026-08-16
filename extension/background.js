@@ -1,4 +1,8 @@
 import {
+  createMeshCentralNavigationEpochRegistry,
+  createMeshCentralNodeProvenanceBridge,
+} from './lib/meshcentral-node-provenance.mjs';
+import {
   buildSidePanelPath,
   DEFAULT_PANEL_RESIDENCY_MODE,
   normalizePanelResidencyMode,
@@ -17,6 +21,23 @@ import {
 } from './lib/transcript.mjs';
 
 let cachedPanelResidencyMode = DEFAULT_PANEL_RESIDENCY_MODE;
+const meshCentralNavigationEpochs = createMeshCentralNavigationEpochRegistry({
+  randomUUID: () => crypto.randomUUID(),
+});
+for (const [event, kind] of [
+  [chrome.webNavigation.onCommitted, 'committed'],
+  [chrome.webNavigation.onHistoryStateUpdated, 'history'],
+  [chrome.webNavigation.onReferenceFragmentUpdated, 'fragment'],
+]) {
+  event.addListener((details) => meshCentralNavigationEpochs.rotate(details, kind));
+}
+chrome.tabs.onRemoved.addListener((tabId) => meshCentralNavigationEpochs.clearTab(tabId));
+const meshCentralProvenanceBridge = createMeshCentralNodeProvenanceBridge({
+  tabs: chrome.tabs,
+  scripting: chrome.scripting,
+  navigationEpochs: meshCentralNavigationEpochs,
+  profileEpochId: crypto.randomUUID(),
+});
 
 function defaultSidePanelPath() {
   return chrome.runtime.getManifest().side_panel?.default_path || 'sidepanel.html';
@@ -285,7 +306,17 @@ chrome.storage?.onChanged?.addListener?.((changes, areaName) => {
       .then((tabId) => reapplyPanelResidencyForTab(tabId));
   }
 });
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'HERMES_CAPTURE_MESHCENTRAL_NODE_PROVENANCE_V1') {
+    meshCentralProvenanceBridge.capture(message, sender)
+      .then(sendResponse)
+      .catch(() => sendResponse({
+        ok: false,
+        stage: 'meshcentral_node_provenance',
+        reason: 'main_world_unavailable',
+      }));
+    return true;
+  }
   if (message?.type !== 'HERMES_GET_YOUTUBE_TRANSCRIPT') return false;
   getYoutubeTranscript(message)
     .then(sendResponse)

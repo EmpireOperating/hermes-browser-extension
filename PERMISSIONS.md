@@ -13,6 +13,7 @@ This document describes the shipped v0.1.10 permission model.
 | `sidePanel` | Provides the browser side-panel UI. |
 | `storage` | Stores local extension settings such as Gateway URL, selected session/model/profile, appearance, and the saved API key/browser token. |
 | `tabs` | Reads tab titles/URLs for the active-tab state, context refreshes, tab summaries, and remote dashboard WebSocket ticket flow. |
+| `webNavigation` | Supplies browser-owned top-frame commit, history-state, and fragment events so private MeshCentral provenance invalidates on every navigation, including same-URL transitions. No navigation history is persisted. |
 
 ## Optional permissions
 

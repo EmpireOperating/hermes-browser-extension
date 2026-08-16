@@ -16,7 +16,8 @@
     "scripting",
     "sidePanel",
     "storage",
-    "tabs"
+    "tabs",
+    "webNavigation"
   ],
   "optional_permissions": [
     "audioCapture"
