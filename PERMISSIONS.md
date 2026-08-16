@@ -2,7 +2,7 @@
 
 Hermes Browser Extension is a Chrome/Edge/Chromium MV3 side panel for connecting the active browser page to your configured Hermes Agent runtime.
 
-This document describes the shipped v0.1.11 permission model.
+This document describes the shipped v0.1.12 permission model.
 
 ## Required extension permissions
 
@@ -19,7 +19,7 @@ This document describes the shipped v0.1.11 permission model.
 
 | Permission | Why it is optional |
 | --- | --- |
-| `audioCapture` | Requested only when voice dictation needs microphone capture from an extension page. If Hermes audio transcription is unavailable, v0.1.10 can use Browser speech fallback when Chromium exposes Web Speech. |
+| `audioCapture` | Requested only when voice dictation needs microphone capture from an extension page. If Hermes audio transcription is unavailable, the extension can use Browser speech fallback when Chromium exposes Web Speech. |
 
 ## Host permissions
 
@@ -36,7 +36,7 @@ The current alpha manifest includes:
 
 These host permissions let the side panel read context from normal web pages and connect to local or remote Hermes Gateway/API servers.
 
-v0.1.10 keeps this host-permission surface unchanged while adding runtime visibility through the Tool Activity Strip, connected-with-warning diagnostics, and redacted Copy Diagnostics support reports. A narrower optional-host-permissions migration is intentionally deferred until it can be shipped without breaking load-unpacked context capture.
+The current release keeps this host-permission surface unchanged while providing runtime visibility through the Tool Activity Strip, connected-with-warning diagnostics, and redacted Copy Diagnostics support reports. A narrower optional-host-permissions migration is intentionally deferred until it can be shipped without breaking load-unpacked context capture.
 
 The extension still blocks browser-internal and sensitive categories in code, including:
 
@@ -45,7 +45,7 @@ The extension still blocks browser-internal and sensitive categories in code, in
 
 ## Permissions not requested
 
-Hermes Browser Extension v0.1.10 does **not** request:
+Hermes Browser Extension does **not** request:
 
 - `debugger`
 - `nativeMessaging`

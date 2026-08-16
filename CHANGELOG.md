@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.12 — 2026-08-16
+
+### Canonical Browser-context publication preparation
+- Added `hermes.browser.context-publication-envelope.v1` with deterministic recursively sorted JSON, exact UTF-8 SHA-256 binding, bounded text/image shapes, canonical base64 validation, and deeply frozen detached content.
+- Added the inert `hermes.browser.context-publication-preparation.v1` background operation, callable only by the manifest-derived extension side panel.
+- Binds metadata-only preparations to browser-owned profile, window, tab, top-frame document, isolated-navigation, service-worker-navigation, origin, and observation identities.
+- Fails closed on malformed content, sender mismatch, unavailable browser state, and detected tab, document, URL, isolated-navigation, or service-worker epoch drift.
+- Unified all four existing HTTP Browser chat paths around one outbound-content builder without invoking preparation or changing ordinary chat behavior.
+
+### Scope and security
+- Preparations return no raw prompt, image bytes, full URL, query, or fragment and are neither persisted nor transmitted.
+- This release adds no authorization, acceptance token, protected publication, observation, support session, credentials, remote input, browser control, or unattended authority.
+- Versioned package, source manifests, generated build metadata, and current release documentation as v0.1.12.
+- Included [PR #4](https://github.com/EmpireOperating/hermes-browser-extension/pull/4), independently reviewed with no remaining blockers.
+
 ## v0.1.11 — 2026-08-16
 
 ### Trusted MeshCentral identity provenance
