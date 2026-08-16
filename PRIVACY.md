@@ -2,7 +2,7 @@
 
 Hermes Browser Extension is a load-unpacked public alpha that sends browser context to the Hermes Agent runtime you configure.
 
-This document describes shipped v0.1.10 behavior.
+This document describes shipped v0.1.11 behavior.
 
 ## No analytics
 

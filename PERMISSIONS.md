@@ -2,7 +2,7 @@
 
 Hermes Browser Extension is a Chrome/Edge/Chromium MV3 side panel for connecting the active browser page to your configured Hermes Agent runtime.
 
-This document describes the shipped v0.1.10 permission model.
+This document describes the shipped v0.1.11 permission model.
 
 ## Required extension permissions
 

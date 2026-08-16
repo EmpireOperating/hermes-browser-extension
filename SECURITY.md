@@ -1,6 +1,6 @@
 # Security Notes
 
-Hermes Browser Extension v0.1.10 is intentionally read-only.
+Hermes Browser Extension v0.1.11 is intentionally read-only.
 
 ## Current permission model
 
