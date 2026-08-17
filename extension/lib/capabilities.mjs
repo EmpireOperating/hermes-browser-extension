@@ -28,6 +28,7 @@ export const DEFAULT_GATEWAY_CAPABILITIES = Object.freeze({
   models: false,
   sessions: false,
   sessionChat: false,
+  contextPublicationAuthorization: false,
   sessionChatStreaming: false,
   chatCompletions: false,
   chatCompletionsStreaming: false,
@@ -59,6 +60,27 @@ export const DEFAULT_GATEWAY_CAPABILITIES = Object.freeze({
 
 function hasEndpoint(endpoints = {}, names = []) {
   return names.some((name) => Boolean(endpoints?.[name]?.path || endpoints?.[name] === true));
+}
+
+function exactEndpoint(endpoints = {}, name, method, path) {
+  const endpoint = endpoints?.[name];
+  return endpoint?.method === method && endpoint?.path === path;
+}
+
+function hasExactProtectedPublicationProtocol(features = {}, endpoints = {}) {
+  return features?.context_publication_authorization === true
+    && exactEndpoint(
+      endpoints,
+      'context_publication_authorize',
+      'POST',
+      '/api/sessions/{session_id}/context-publications/authorize',
+    )
+    && exactEndpoint(
+      endpoints,
+      'context_publication',
+      'POST',
+      '/api/sessions/{session_id}/context-publications',
+    );
 }
 
 function boolFeature(features = {}, names = []) {
@@ -133,13 +155,16 @@ export function normalizeGatewayCapabilities(payload = null, { healthOk = false,
   const endpoints = payload.endpoints || {};
   const caps = {
     ...DEFAULT_GATEWAY_CAPABILITIES,
-    source: payload.platform === 'hermes-agent' || payload.object === 'hermes.api_server.capabilities' ? 'api-server' : 'api-server',
+    source: payload.platform === 'hermes-agent' || payload.object === 'hermes.api_server.capabilities'
+      ? 'api-server'
+      : 'unverified',
     platform: String(payload.platform || ''),
     health: Boolean(healthOk || hasEndpoint(endpoints, ['health', 'health_detailed'])),
     auth: Boolean(hasApiKey || payload.auth?.required || payload.auth?.type),
     models: inferredFeature(features, endpoints, ['models_api', 'models'], ['models']),
     sessions: inferredFeature(features, endpoints, ['session_resources', 'sessions_api'], ['sessions', 'session', 'session_create']),
     sessionChat: inferredFeature(features, endpoints, ['session_chat'], ['session_chat']),
+    contextPublicationAuthorization: hasExactProtectedPublicationProtocol(features, endpoints),
         sessionChatStreaming: inferredFeature(features, endpoints, ['session_chat_streaming'], ['session_chat_stream']),
         chatCompletions: inferredFeature(features, endpoints, ['chat_completions'], ['chat_completions']),
         chatCompletionsStreaming: inferredFeature(features, endpoints, ['chat_completions_streaming'], ['chat_completions_stream']),
@@ -158,7 +183,10 @@ export function normalizeGatewayCapabilities(payload = null, { healthOk = false,
     browserContextProvider: true,
     browserContextUpload: inferredFeature(features, endpoints, [BROWSER_CAPABILITY_FLAGS.browserContextUpload, 'browserContextUpload'], ['browser_context_update', 'browser_context']),
     browserContextStatus: inferredFeature(features, endpoints, [BROWSER_CAPABILITY_FLAGS.browserContextStatus, 'browserContextStatus'], ['browser_context_status']),
-    browserCompanionPlugin: inferredFeature(features, endpoints, [BROWSER_CAPABILITY_FLAGS.browserCompanionPlugin, 'browserCompanionPlugin'], ['browser_companion_status', 'browser_context_status']),
+    browserCompanionPlugin: boolFeature(
+      features,
+      [BROWSER_CAPABILITY_FLAGS.browserCompanionPlugin, 'browserCompanionPlugin'],
+    ) === true,
     browserEvents: inferredFeature(features, endpoints, ['browser_events', 'browserEvents', 'run_events_sse', 'run_events'], ['browser_events', 'run_events']),
     pluginActions: inferredFeature(features, endpoints, [BROWSER_CAPABILITY_FLAGS.pluginActions, 'pluginActions'], ['browser_actions', 'plugin_actions']),
     approvalEvents: inferredFeature(features, endpoints, [BROWSER_CAPABILITY_FLAGS.approvalEvents, 'approvalEvents'], ['approval_events']),
@@ -174,6 +202,12 @@ export function normalizeGatewayCapabilities(payload = null, { healthOk = false,
 
   caps.warnings = [...(warning ? [warning] : []), ...missingWarnings(caps)];
   return caps;
+}
+
+export function shouldUseProtectedContextPublication(caps = DEFAULT_GATEWAY_CAPABILITIES) {
+  return caps?.source === 'api-server'
+    && caps?.contextPublicationAuthorization === true
+    && caps?.browserCompanionPlugin === true;
 }
 
 function statusFor(value, unavailableDetail, availableDetail = 'Available on the connected Hermes runtime.') {
@@ -195,6 +229,11 @@ export function capabilityStatusRows(caps = DEFAULT_GATEWAY_CAPABILITIES, { brow
     { key: 'sessions', label: 'Sessions', ...statusFor(caps.sessions, 'Session API unavailable — chat completions fallback will be used.') },
     { key: 'skills', label: 'Skills', ...statusFor(caps.skills, 'Skills API unavailable.') },
     { key: 'profiles', label: 'Profiles', ...statusFor(caps.profiles, WARNING_CAPABILITY_COPY.profiles) },
+    { key: 'contextPublicationAuthorization', label: 'Protected context publication', ...statusFor(
+      caps.contextPublicationAuthorization,
+      'Protected publication unavailable — legacy Browser chat remains separate and unrestricted.',
+      'Host-owned single-use context authorization is available.',
+    ) },
     { key: 'audioTranscription', label: 'Voice transcription', status: caps.audioTranscription ? 'ok' : 'warn', detail: audioDetail },
     { key: 'imageUpload', label: 'Image upload', ...statusFor(caps.imageUpload, WARNING_CAPABILITY_COPY.imageUpload, 'Pasted images can be saved for local path-backed Hermes vision.') },
     { key: 'browserPairing', label: 'Browser pairing', ...statusFor(caps.browserPairing, WARNING_CAPABILITY_COPY.browserPairing, 'Automatic pairing route available.') },

@@ -22,13 +22,18 @@ test('content-to-background production path owns same-document provenance', () =
   assert.ok(manifest.permissions.includes('webNavigation'));
 });
 
-test('background exposes inert metadata-only context publication preparation', () => {
+test('background owns capture tickets and the complete protected publication transaction', () => {
   assert.match(background, /createContextPublicationPreparationBridge/);
+  assert.match(background, /createContextPublicationCaptureRegistry/);
+  assert.match(background, /createContextPublicationTransaction/);
   assert.match(background, /HERMES_PREPARE_CONTEXT_PUBLICATION_V1/);
-  assert.match(background, /contextPublicationPreparationBridge\.prepare\(message, sender\)/);
+  assert.match(background, /CONTEXT_PUBLICATION_CAPTURE_MESSAGE/);
+  assert.match(background, /CONTEXT_PUBLICATION_TRANSACTION_MESSAGE/);
+  assert.match(background, /contextPublicationCaptures\.begin\(message, sender\)/);
+  assert.match(background, /contextPublicationTransaction\.publish\(message, sender\)/);
   assert.match(background, /getManifest\(\)\.side_panel\?\.default_path/);
   assert.match(background, /scripting: chrome\.scripting/);
-  assert.doesNotMatch(background, /publishContext|authorizeContext|streamSessionChat/);
+  assert.doesNotMatch(background, /streamSessionChat|fallbackSessionChat|chat\/stream/);
 });
 
 test('production path does not attach provenance to normal page context', () => {
