@@ -83,7 +83,7 @@ This repo is specifically for the **Hermes Browser Extension**: the Chrome/Edge/
 ### 1. Clone and build
 
 ```bash
-git clone https://github.com/abundantbeing/hermes-browser-extension.git
+git clone https://github.com/EmpireOperating/hermes-browser-extension.git
 cd hermes-browser-extension
 npm install
 npm run build
@@ -204,7 +204,7 @@ The DOM/context chip should show a non-zero page-context count on normal readabl
 You can ask Hermes to help install it:
 
 ```text
-Install Hermes Browser Extension from https://github.com/abundantbeing/hermes-browser-extension. Clone it, run npm install, run npm run build, then use computer use to open chrome://extensions, enable Developer mode, load the dist folder unpacked, and help me connect it to my local or remote Hermes Gateway API server. Do not reveal, print, screenshot, or commit my API key.
+Install the Empire-controlled Hermes Browser Extension fallback from https://github.com/EmpireOperating/hermes-browser-extension. Clone it, run npm install, run npm run build, then use computer use to open chrome://extensions, enable Developer mode, load the dist folder unpacked, and help me connect it to my local or remote Hermes Gateway API server. Do not reveal, print, screenshot, or commit my API key.
 ```
 
 ## Security model
@@ -345,7 +345,7 @@ npm run review:watch
 Optional overrides:
 
 ```bash
-HERMES_REVIEW_REPO=abundantbeing/hermes-browser-extension
+HERMES_REVIEW_REPO=EmpireOperating/hermes-browser-extension
 HERMES_REVIEW_GATEWAY_URL=http://127.0.0.1:8642
 HERMES_REVIEW_API_KEY=<api-server-key-or-scoped-token>
 HERMES_REVIEW_MAX_TARGETS=3
@@ -361,7 +361,7 @@ npm run review:watch:dry-run
 
 GITHUB_EVENT_NAME=pull_request_target \
 GITHUB_EVENT_PATH=./event.json \
-GITHUB_REPOSITORY=abundantbeing/hermes-browser-extension \
+GITHUB_REPOSITORY=EmpireOperating/hermes-browser-extension \
 GITHUB_TOKEN=<github-token> \
 npm run review:event:dry-run
 ```

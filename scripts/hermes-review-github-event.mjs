@@ -150,7 +150,7 @@ export function deriveReviewLabels(target = {}, diff = '') {
   if (/\b(browser control|computer-use|playwright|chrome devtools|control mode)\b/i.test(text)) labels.add('sweep:risk-browser-control');
   if (/\b(manifest|version|release|tag|package)\b/i.test(text)) labels.add('sweep:risk-release');
 
-  if (target.kind === 'pull_request' && /https:\/\/github\.com\/(?!abundantbeing\/hermes-browser-extension\b)[^\s)]+/i.test(diff)) {
+  if (target.kind === 'pull_request' && /https:\/\/github\.com\/(?!EmpireOperating\/hermes-browser-extension\b)[^\s)]+/i.test(diff)) {
     labels.add('needs/security-review');
   }
 
