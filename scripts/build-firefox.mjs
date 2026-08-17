@@ -70,7 +70,7 @@ if (Array.isArray(sourceManifest.permissions)) {
 // Add Firefox-specific settings
 sourceManifest.browser_specific_settings = {
   gecko: {
-    id: 'hermes-browser@abundantbeing.github.io',
+    id: 'hermes-browser@empireoperating.github.io',
     strict_min_version: '115.0',
   },
 };

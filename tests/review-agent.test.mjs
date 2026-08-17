@@ -101,6 +101,21 @@ test('deriveReviewLabels flags external GitHub docs links for security review', 
   assert.ok(labels.includes('p3'));
 });
 
+test('deriveReviewLabels trusts only the current Empire Browser repository identity', () => {
+  const target = {
+    kind: 'pull_request',
+    number: 25,
+    title: 'docs: link release repository',
+    body: 'Update release documentation.',
+    labels: [],
+  };
+  const empireDiff = '+[Release](https://github.com/EmpireOperating/hermes-browser-extension/releases)';
+  const originalDiff = '+[Release](https://github.com/abundantbeing/hermes-browser-extension/releases)';
+
+  assert.ok(!deriveReviewLabels(target, empireDiff).includes('needs/security-review'));
+  assert.ok(deriveReviewLabels(target, originalDiff).includes('needs/security-review'));
+});
+
 test('callHermesReview times out stuck local Hermes requests', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (_url, options = {}) => new Promise((_resolve, reject) => {

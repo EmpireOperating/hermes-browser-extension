@@ -2040,10 +2040,10 @@ function syncActiveSessionRuntimeFromList() {
 const TEXT_ATTACHMENT_LIMIT = 12_000;
 const IMAGE_ATTACHMENT_TOKEN_ESTIMATE = 1_200;
 const BROWSER_IMAGE_UPLOAD_ENDPOINT = '/api/browser-extension/uploads/images';
-const UPDATE_PACKAGE_URL = 'https://raw.githubusercontent.com/abundantbeing/hermes-browser-extension/main/package.json';
-const UPDATE_MAIN_COMMIT_URL = 'https://api.github.com/repos/abundantbeing/hermes-browser-extension/commits/main';
-const UPDATE_COMPARE_URL = 'https://api.github.com/repos/abundantbeing/hermes-browser-extension/compare';
-const REPO_URL = 'https://github.com/abundantbeing/hermes-browser-extension';
+const UPDATE_PACKAGE_URL = 'https://raw.githubusercontent.com/EmpireOperating/hermes-browser-extension/main/package.json';
+const UPDATE_MAIN_COMMIT_URL = 'https://api.github.com/repos/EmpireOperating/hermes-browser-extension/commits/main';
+const UPDATE_COMPARE_URL = 'https://api.github.com/repos/EmpireOperating/hermes-browser-extension/compare';
+const REPO_URL = 'https://github.com/EmpireOperating/hermes-browser-extension';
 const runtimeManifest = globalThis.chrome?.runtime?.getManifest?.() || {};
 const CURRENT_EXTENSION_VERSION = normalizeExtensionVersion(runtimeManifest, els.versionLabel?.textContent);
 

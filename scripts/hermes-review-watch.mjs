@@ -17,7 +17,7 @@ import {
   upsertReviewComment,
 } from './hermes-review-github-event.mjs';
 
-const DEFAULT_REPO = 'abundantbeing/hermes-browser-extension';
+const DEFAULT_REPO = 'EmpireOperating/hermes-browser-extension';
 const DEFAULT_GATEWAY_URL = 'http://127.0.0.1:8642';
 const DEFAULT_STATE_FILE = path.join(os.homedir(), '.hermes', 'hermes-browser-review-state.json');
 
